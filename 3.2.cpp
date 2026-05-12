@@ -1,132 +1,90 @@
-﻿#include <iostream>
+#include <iostream>
 #include <vector>
 #include <iomanip>
-#include <clocale>
+#include <cmath>
+#include <algorithm>
+
 using namespace std;
 
 int main() {
     setlocale(LC_ALL, "Russian");
-    cout << " метод прогонки \n";
-    cout << "Решение системы с трёхдиагональной матрицей\n\n";
+    
+    // Машинная точность для типа double
+    const double eps_m = 2.22e-16;
 
-    // Ввод размера системы
     int n;
     cout << "Введите размерность системы n: ";
     cin >> n;
 
-    if (n < 2) {
-        cout << "Ошибка: размерность должна быть >= 2\n";
-        return 1;
-    }
+    if (n < 2) return 1;
 
-    // Объявление массивов для коэффициентов
-    vector<double> a(n, 0.0);     // нижняя диагональ (α)
-    vector<double> b(n, 0.0);     // главная диагональ (β)
-    vector<double> c(n, 0.0);     // верхняя диагональ (γ)
-    vector<double> d(n, 0.0);     // правая часть
+    // Коэффициенты (a - нижняя, b - главная, c - верхняя диагонали, d - правая часть)
+    vector<double> a(n), b(n), c(n), d(n);
+    // Массивы для хранения накопленной погрешности (delta) каждого коэффициента
+    vector<double> da(n, 0.0), db(n, 0.0), dc(n, 0.0), dd(n, 0.0);
 
-    // Ввод главной диагонали
-    cout << "\nВведите элементы главной диагонали B[i] (i = 1.." << n << "):\n";
+    cout << "Введите элементы (через пробел или Enter):\n";
     for (int i = 0; i < n; i++) {
-        cout << "B[" << i + 1 << "] = ";
+        cout << "Уравнение " << i + 1 << " (A[i], B[i], C[i], D[i]): ";
+        if (i == 0) a[i] = 0; else cin >> a[i];
         cin >> b[i];
-    }
-
-    // Ввод верхней диагонали
-    cout << "\nВведите элементы верхней диагонали C[i] (i = 1.." << n - 1 << "):\n";
-    for (int i = 0; i < n - 1; i++) {
-        cout << "C[" << i + 1 << "] = ";
-        cin >> c[i];
-    }
-
-    // Ввод нижней диагонали
-    cout << "\nВведите элементы нижней диагонали A[i] (i = 2.." << n << "):\n";
-    for (int i = 1; i < n; i++) {
-        cout << "A[" << i + 1 << "] = ";
-        cin >> a[i];
-    }
-
-    // Ввод правой части
-    cout << "\nВведите правую часть d[i] (i = 1.." << n << "):\n";
-    for (int i = 0; i < n; i++) {
-        cout << "d[" << i + 1 << "] = ";
+        if (i == n - 1) c[i] = 0; else cin >> c[i];
         cin >> d[i];
+        
+        // Погрешность ввода (начальная погрешность представления числа)
+        da[i] = abs(a[i]) * eps_m;
+        db[i] = abs(b[i]) * eps_m;
+        dc[i] = abs(c[i]) * eps_m;
+        dd[i] = abs(d[i]) * eps_m;
     }
 
-    // Вывод введённой системы
-    cout << "\n введенная система \n";
-    for (int i = 0; i < n; i++) {
-        if (i > 0) cout << a[i] << "*x" << i << " + ";
-        cout << b[i] << "*x" << i + 1;
-        if (i < n - 1) cout << " + " << c[i] << "*x" << i + 2;
-        cout << " = " << d[i] << endl;
-    }
+    // Прогоночные коэффициенты и их погрешности
+    vector<double> P(n), Q(n), dP(n), dQ(n);
 
-    // --- МЕТОД ПРОГОНКИ ---
-    cout << "\n решение метоодом прогонки \n";
+    // Прямая прогонка (для первого узла)
+    P[0] = -c[0] / b[0];
+    // Расчет погрешности P[0] (деление): суммируем относительные погрешности
+    dP[0] = abs(P[0]) * (dc[0]/abs(c[0] + 1e-20) + db[0]/abs(b[0] + 1e-20));
+    
+    Q[0] = d[0] / b[0];
+    dQ[0] = abs(Q[0]) * (dd[0]/abs(d[0] + 1e-20) + db[0]/abs(b[0] + 1e-20));
 
-    // Массивы для прогоночных коэффициентов
-    vector<double> p(n, 0.0);  // коэффициенты P (c_i в методичке)
-    vector<double> q(n, 0.0);  // коэффициенты Q (d_i в методичке)
-    vector<double> x(n, 0.0);  // решение
-
-    // Прямая прогонка
-    p[1] = -c[0] / b[0];
-    q[1] = d[0] / b[0];
-
-    cout << "\nПрямая прогонка:\n";
-    cout << "p[2] = " << p[1] << ", q[2] = " << q[1] << endl;
-
-    for (int i = 2; i < n; i++) {
-        double denom = a[i] * p[i - 1] + b[i - 1];
-        if (abs(denom) < 1e-10) {
-            cout << "Ошибка: деление на ноль!\n";
-            return 1;
+    // Цикл прямой прогонки
+    for (int i = 1; i < n; i++) {
+        double znam = b[i] + a[i] * P[i - 1];
+        // Погрешность знаменателя (сложение и умножение)
+        double d_znam = db[i] + (abs(a[i] * P[i-1]) * (da[i]/abs(a[i]+1e-20) + dP[i-1]/abs(P[i-1]+1e-20)));
+        
+        if (i < n - 1) {
+            P[i] = -c[i] / znam;
+            dP[i] = abs(P[i]) * (dc[i]/abs(c[i]+1e-20) + d_znam/abs(znam+1e-20));
         }
-        p[i] = -c[i - 1] / denom;
-        q[i] = (d[i - 1] - a[i] * q[i - 1]) / denom;
-        cout << "p[" << i + 1 << "] = " << p[i] << ", q[" << i + 1 << "] = " << q[i] << endl;
+        
+        Q[i] = (d[i] - a[i] * Q[i - 1]) / znam;
+        // Погрешность числителя
+        double d_chisl = dd[i] + (abs(a[i] * Q[i-1]) * (da[i]/abs(a[i]+1e-20) + dQ[i-1]/abs(Q[i-1]+1e-20)));
+        dQ[i] = abs(Q[i]) * (d_chisl/abs(d[i] - a[i]*Q[i-1] + 1e-20) + d_znam/abs(znam+1e-20));
     }
 
-    // Обратная прогонка
-    double denom = a[n - 1] * p[n - 1] + b[n - 1];
-    if (abs(denom) < 1e-10) {
-        cout << "Ошибка: деление на ноль!\n";
-        return 1;
-    }
-    x[n - 1] = (d[n - 1] - a[n - 1] * q[n - 1]) / denom;
-
-    cout << "\nОбратная прогонка:\n";
-    cout << "x[" << n << "] = " << x[n - 1] << endl;
+    // Обратная прогонка и расчет погрешности X
+    vector<double> x(n), dx(n);
+    x[n - 1] = Q[n - 1];
+    dx[n - 1] = dQ[n - 1];
 
     for (int i = n - 2; i >= 0; i--) {
-        x[i] = p[i + 1] * x[i + 1] + q[i + 1];
-        cout << "x[" << i + 1 << "] = " << x[i] << endl;
+        x[i] = P[i] * x[i + 1] + Q[i];
+        // Погрешность: сумма погрешности произведения (P*X) и погрешности Q
+        double d_prod = abs(P[i] * x[i+1]) * (dP[i]/abs(P[i]+1e-20) + dx[i+1]/abs(x[i+1]+1e-20));
+        dx[i] = d_prod + dQ[i];
     }
 
-    // Вывод решения
-    cout << "\n решение системы \n";
+    // Вывод результатов с учетом погрешности
+    cout << "\nРезультаты (x_i ± delta_i):\n";
+    cout << fixed << setprecision(10);
     for (int i = 0; i < n; i++) {
-        cout << "x" << i + 1 << " = " << fixed << setprecision(6) << x[i] << endl;
+        cout << "x[" << i + 1 << "] = " << setw(12) << x[i] 
+             << "  ±  " << scientific << dx[i] << endl;
     }
 
-    // Проверка решения
-    cout << "\n невязка \n";
-    double max_residual = 0.0;
-
-    for (int i = 0; i < n; i++) {
-        double sum = 0.0;
-        if (i > 0) sum += a[i] * x[i - 1];
-        sum += b[i] * x[i];
-        if (i < n - 1) sum += c[i] * x[i + 1];
-
-        double residual = abs(sum - d[i]);
-        max_residual = max(max_residual, residual);
-
-        cout << "Ур-е " << i + 1 << ": " << sum << " = " << d[i]
-            << " | невязка: " << scientific << residual << endl;
-    }
-
-    cout << "\nМаксимальная невязка: " << scientific << max_residual << endl;
-
+    return 0;
 }
